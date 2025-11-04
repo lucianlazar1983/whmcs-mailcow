@@ -1,5 +1,6 @@
-# MailCow Module for WHMCS
+# MailCow Automated Provisioning Module for WHMCS 
 
+## [Install and Configure Wiki](https://github.com/lucianlazar1983/whmcs-mailcow/wiki)
 ## Description
 
 This is an advanced provisioning module designed to integrate WHMCS with MailCow email servers. Its primary goal is to fully automate the lifecycle of an email service, from domain creation to domain admin management, directly from the WHMCS admin panel.
@@ -63,4 +64,4 @@ To function correctly, the module relies on a specific configuration within WHMC
 * Correct operation depends on the exact matching of the Configurable Option names and the internal Custom Field name.
 
 
-## Please refer to the wiki section for complete installation and usage.
+## Please refer to the [Wiki Section](https://github.com/lucianlazar1983/whmcs-mailcow/wiki) for complete installation and usage.
