@@ -1,3 +1,5 @@
+<a href='https://ko-fi.com/W7W61NW50T' target='_blank'><img height='36' style='border:0px;height:36px;' src='https://storage.ko-fi.com/cdn/kofi6.png?v=6' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a>
+
 # MailCow Automated Provisioning Module for WHMCS 
 
 ## [Install and Configure Wiki](https://github.com/lucianlazar1983/whmcs-mailcow/wiki)
