@@ -1,24 +1,25 @@
 <?php
 /**
- * MailCow Provisioning Module for WHMCS
+ * Modulo di Provisioning MailCow per WHMCS
  *
  * @author Lucian Lazar
- * @version 11.2 (Button Rename)
+ * @version 11.3 (Sanitize log entries)
  */
 
 if (!defined("WHMCS")) {
-    die("This file cannot be accessed directly.");
+    die("Questo file non può essere aceduto direttamente.");
 }
 
-// Import the Capsule class for database interaction
+// Importa la classe Capsule pentru interacțiunea cu baza de date
 use WHMCS\Database\Capsule;
 
-// --- Custom Fields Configuration ---
+// --- Configurazione Campi Personalizzati ---
 define('MAILCOW_INTERNAL_USERNAME_FIELD', 'mailcow_admin_username');
-// --- End Configuration ---
+// --- Fine Configurazione ---
 
-// Helper functions to generate username and password
-function mailcow_generateRandomString($length = 5) {
+// Funzioni helper per generare username e password
+function mailcow_generateRandomString($length = 5)
+{
     $characters = 'abcdefghijklmnopqrstuvwxyz';
     $charactersLength = strlen($characters);
     $randomString = '';
@@ -28,15 +29,17 @@ function mailcow_generateRandomString($length = 5) {
     return $randomString;
 }
 
-function mailcow_generateStrongPassword($length = 22) {
+function mailcow_generateStrongPassword($length = 22)
+{
     $chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+[]{}|;:,.<>?';
-    return substr(str_shuffle(str_repeat($chars, ceil($length/strlen($chars)))), 1, $length);
+    return substr(str_shuffle(str_repeat($chars, ceil($length / strlen($chars)))), 1, $length);
 }
 
 /**
- * Helper function to update a custom field value in the database.
+ * Funzione helper per aggiornare il valore di un campo personalizzato nel database.
  */
-function mailcow_updateCustomFieldValue($serviceId, $fieldName, $value) {
+function mailcow_updateCustomFieldValue($serviceId, $fieldName, $value)
+{
     try {
         $fieldId = Capsule::table('tblcustomfields')->where('fieldname', $fieldName)->where('type', 'product')->value('id');
         if ($fieldId) {
@@ -52,9 +55,44 @@ function mailcow_updateCustomFieldValue($serviceId, $fieldName, $value) {
     }
 }
 
+/**
+ * Sanitizes parameters for logging, removing sensitive data.
+ *
+ * @param array $params
+ * @return array
+ */
+function mailcow_sanitizeParamsForLog($params)
+{
+    $cleanParams = $params;
+    $sensitiveKeys = ['password', 'serveraccesshash', 'password2', 'username', 'mailcow_admin_username'];
+
+    // Sanitize top-level keys
+    foreach ($sensitiveKeys as $key) {
+        if (isset($cleanParams[$key])) {
+            $cleanParams[$key] = '***SANITIZED***';
+        }
+    }
+
+    // Sanitize custom fields if present
+    if (isset($cleanParams['customfields']) && is_array($cleanParams['customfields'])) {
+        foreach ($cleanParams['customfields'] as $key => $value) {
+            // Check if key name resembles a sensitive field (basic check)
+            if (stripos($key, 'password') !== false || stripos($key, 'secret') !== false) {
+                $cleanParams['customfields'][$key] = '***SANITIZED***';
+            }
+        }
+        // Explicitly sanitize internal username field if present in customfields
+        if (isset($cleanParams['customfields'][MAILCOW_INTERNAL_USERNAME_FIELD])) {
+            $cleanParams['customfields'][MAILCOW_INTERNAL_USERNAME_FIELD] = '***SANITIZED***';
+        }
+    }
+
+    return $cleanParams;
+}
+
 
 /**
- * Defines the module metadata.
+ * Definisce i metadati del modulo.
  *
  * @return array
  */
@@ -69,7 +107,7 @@ function mailcow_MetaData()
 
 
 /**
- * Sends an API request to MailCow.
+ * Invia una richiesta API a MailCow.
  *
  * @param array $params
  * @param string $endpoint
@@ -137,7 +175,7 @@ function mailcow_API_Call($params, $endpoint, $method = 'POST', $data = [])
 }
 
 /**
- * Defines the custom command buttons.
+ * Definisci pulsanti personalizzati.
  *
  * @return array
  */
@@ -150,7 +188,7 @@ function mailcow_AdminCustomButtonArray()
 
 
 /**
- * Creates a new account.
+ * Crea un nuovo account.
  *
  * @param array $params
  * @return string
@@ -158,29 +196,28 @@ function mailcow_AdminCustomButtonArray()
 function mailcow_CreateAccount(array $params)
 {
     try {
-        // Step 1: Create the domain
+        // Step 1: Crea il dominio
         $domain = $params['domain'];
         $configOptions = $params['configoptions'];
 
-        // **IMPORTANT: These keys must match the English names in README.en.html**
-        $quota = (int)($configOptions['Total Domain Quota'] ?? 5120);
-        $maxAccounts = (int)($configOptions['Max Mailboxes'] ?? 5);
-        $maxAliases = (int)($configOptions['Max Aliases'] ?? 10);
+        $quota = (int) ($configOptions['Quota Totale Dominio'] ?? 5120);
+        $maxAccounts = (int) ($configOptions['Max Caselle'] ?? 5);
+        $maxAliases = (int) ($configOptions['Max Alias'] ?? 10);
 
         $data_domain = [
             'domain' => $domain,
             'description' => $params['clientsdetails']['companyname'] ?: $params['clientsdetails']['firstname'] . ' ' . $params['clientsdetails']['lastname'],
-            'aliases' => (string)$maxAliases,
-            'defquota' => "1024", // Default mailbox quota (1GB) as per README
-            'maxquota' => (string)$quota,
-            'quota' => (string)$quota,
-            'mailboxes' => (string)$maxAccounts,
+            'aliases' => (string) $maxAliases,
+            'defquota' => "1024",
+            'maxquota' => (string) $quota,
+            'quota' => (string) $quota,
+            'mailboxes' => (string) $maxAccounts,
             'active' => "1"
         ];
 
         mailcow_API_Call($params, 'add/domain', 'POST', $data_domain);
 
-        // Step 2: Generate and create the domain administrator
+        // Step 2: Genera e crea l'amministratore del dominio
         $username = "admin-" . mailcow_generateRandomString(5) . "-" . $params['userid'];
         $password = mailcow_generateStrongPassword(22);
 
@@ -191,29 +228,29 @@ function mailcow_CreateAccount(array $params)
             'domains' => $domain,
             'active' => '1'
         ];
-        
+
         mailcow_API_Call($params, 'add/domain-admin', 'POST', $data_admin);
 
-        // Step 3: Save the generated values
+        // Step 3: Salva i valori generati
         Capsule::table('tblhosting')
             ->where('id', $params['serviceid'])
             ->update([
                 'username' => $username,
                 'password' => encrypt($password),
             ]);
-        // Save in the internal custom field as well
+        // Salvează și în câmpul personalizat intern
         mailcow_updateCustomFieldValue($params['serviceid'], MAILCOW_INTERNAL_USERNAME_FIELD, $username);
 
         return 'success';
 
     } catch (Exception $e) {
-        logModuleCall('mailcow', __FUNCTION__, $params, $e->getMessage(), null, []);
+        logModuleCall('mailcow', __FUNCTION__, mailcow_sanitizeParamsForLog($params), $e->getMessage(), null, []);
         return $e->getMessage();
     }
 }
 
 /**
- * Suspends an account.
+ * Sospende un account.
  *
  * @param array $params
  * @return string
@@ -221,12 +258,12 @@ function mailcow_CreateAccount(array $params)
 function mailcow_SuspendAccount(array $params)
 {
     try {
-        // Step 1: Suspend the domain
+        // Step 1: Sospende il dominio
         $domain = $params['domain'];
         $data_domain = ['attr' => ['active' => '0'], 'items' => [$domain]];
         mailcow_API_Call($params, 'edit/domain', 'POST', $data_domain);
 
-        // Step 2: Suspend the domain administrator, using the internal field
+        // Step 2: Sospende l'amministratore del dominio, folosind câmpul intern
         $adminUsername = $params['customfields'][MAILCOW_INTERNAL_USERNAME_FIELD] ?? $params['username'];
         if (!empty($adminUsername)) {
             $data_admin = [
@@ -236,16 +273,16 @@ function mailcow_SuspendAccount(array $params)
             mailcow_API_Call($params, 'edit/domain-admin', 'POST', $data_admin);
         }
 
-        logModuleCall('mailcow', __FUNCTION__, ['domain' => $domain, 'admin' => $adminUsername], 'Success', null, []);
+        logModuleCall('mailcow', __FUNCTION__, ['domain' => $domain, 'admin' => $adminUsername], 'Successo', null, []);
         return 'success';
     } catch (Exception $e) {
-        logModuleCall('mailcow', __FUNCTION__, $params, $e->getMessage(), null, []);
+        logModuleCall('mailcow', __FUNCTION__, mailcow_sanitizeParamsForLog($params), $e->getMessage(), null, []);
         return $e->getMessage();
     }
 }
 
 /**
- * Unsuspends an account.
+ * Riattiva un account.
  *
  * @param array $params
  * @return string
@@ -253,7 +290,7 @@ function mailcow_SuspendAccount(array $params)
 function mailcow_UnsuspendAccount(array $params)
 {
     try {
-        // Step 1: Reactivate the domain
+        // Step 1: Riattiva il dominio
         $domain = $params['domain'];
         $data_domain = [
             'attr' => ['active' => '1'],
@@ -261,7 +298,7 @@ function mailcow_UnsuspendAccount(array $params)
         ];
         mailcow_API_Call($params, 'edit/domain', 'POST', $data_domain);
 
-        // Step 2: Reactivate the domain administrator, using the internal field
+        // Step 2: Riattiva l'amministratore del dominio, folosind câmpul intern
         $adminUsername = $params['customfields'][MAILCOW_INTERNAL_USERNAME_FIELD] ?? $params['username'];
         if (!empty($adminUsername)) {
             $data_admin = [
@@ -270,17 +307,17 @@ function mailcow_UnsuspendAccount(array $params)
             ];
             mailcow_API_Call($params, 'edit/domain-admin', 'POST', $data_admin);
         }
-        
-        logModuleCall('mailcow', __FUNCTION__, ['domain' => $domain, 'admin' => $adminUsername], 'Success', null, []);
+
+        logModuleCall('mailcow', __FUNCTION__, ['domain' => $domain, 'admin' => $adminUsername], 'Successo', null, []);
         return 'success';
     } catch (Exception $e) {
-        logModuleCall('mailcow', __FUNCTION__, $params, $e->getMessage(), null, []);
+        logModuleCall('mailcow', __FUNCTION__, mailcow_sanitizeParamsForLog($params), $e->getMessage(), null, []);
         return $e->getMessage();
     }
 }
 
 /**
- * Terminates an account.
+ * Termina un account.
  *
  * @param array $params
  * @return string
@@ -288,13 +325,13 @@ function mailcow_UnsuspendAccount(array $params)
 function mailcow_TerminateAccount(array $params)
 {
     try {
-        // Step 1: Terminate the domain administrator, using the internal field
+        // Step 1: Termina l'amministratore del dominio, folosind câmpul intern
         $adminUsername = $params['customfields'][MAILCOW_INTERNAL_USERNAME_FIELD] ?? $params['username'];
         if (!empty($adminUsername)) {
             mailcow_API_Call($params, 'delete/domain-admin', 'POST', [$adminUsername]);
         }
-        
-        // Step 2: Terminate the domain and its mailboxes
+
+        // Step 2: Termina il dominio e le sue caselle di posta
         $domain = $params['domain'];
         $mailboxes = mailcow_API_Call($params, 'get/mailbox/all/' . $domain, 'GET');
 
@@ -306,18 +343,18 @@ function mailcow_TerminateAccount(array $params)
         }
         mailcow_API_Call($params, 'delete/domain', 'POST', [$domain]);
 
-        // Step 3: Clear the login data from the service in WHMCS
+        // Step 3: Pulisce i dati di login dal servizio in WHMCS
         Capsule::table('tblhosting')
             ->where('id', $params['serviceid'])
             ->update([
                 'username' => '',
                 'password' => '',
             ]);
-        
-        // Step 4: Clear the internal custom field
+
+        // Step 4: Pulisce il campo personalizzato interno
         mailcow_updateCustomFieldValue($params['serviceid'], MAILCOW_INTERNAL_USERNAME_FIELD, '');
 
-        logModuleCall('mailcow', __FUNCTION__, ['domain' => $domain, 'admin' => $adminUsername], 'Success, login data cleared.', null, []);
+        logModuleCall('mailcow', __FUNCTION__, ['domain' => $domain, 'admin' => $adminUsername], 'Successo, dati di login puliti.', null, []);
         return 'success';
 
     } catch (Exception $e) {
@@ -327,7 +364,7 @@ function mailcow_TerminateAccount(array $params)
 }
 
 /**
- * Changes the package (used for upgrade/downgrade).
+ * Modifica il pacchetto (utilizzato per upgrade/downgrade).
  *
  * @param array $params
  * @return string
@@ -335,36 +372,35 @@ function mailcow_TerminateAccount(array $params)
 function mailcow_ChangePackage(array $params)
 {
     try {
-        // Change the domain options
+        // Modifica le opzioni del dominio
         $domain = $params['domain'];
         $configOptions = $params['configoptions'];
 
-        // **IMPORTANT: These keys must match the English names in README.en.html**
-        $quota = (int)($configOptions['Total Domain Quota'] ?? 5120);
-        $maxAccounts = (int)($configOptions['Max Mailboxes'] ?? 5);
-        $maxAliases = (int)($configOptions['Max Aliases'] ?? 10);
-        
+        $quota = (int) ($configOptions['Quota Totale Dominio'] ?? 5120);
+        $maxAccounts = (int) ($configOptions['Max Caselle'] ?? 5);
+        $maxAliases = (int) ($configOptions['Max Alias'] ?? 10);
+
         $data_domain = [
             'attr' => [
-                'maxquota' => (string)$quota,
-                'quota' => (string)$quota,
-                'mailboxes' => (string)$maxAccounts,
-                'aliases' => (string)$maxAliases,
+                'maxquota' => (string) $quota,
+                'quota' => (string) $quota,
+                'mailboxes' => (string) $maxAccounts,
+                'aliases' => (string) $maxAliases,
             ],
             'items' => [$domain]
         ];
         mailcow_API_Call($params, 'edit/domain', 'POST', $data_domain);
 
-        logModuleCall('mailcow', __FUNCTION__, ['domain' => $domain], 'Success', null, []);
+        logModuleCall('mailcow', __FUNCTION__, ['domain' => $domain], 'Successo', null, []);
         return 'success';
     } catch (Exception $e) {
-        logModuleCall('mailcow', __FUNCTION__, $params, $e->getMessage(), null, []);
+        logModuleCall('mailcow', __FUNCTION__, mailcow_sanitizeParamsForLog($params), $e->getMessage(), null, []);
         return $e->getMessage();
     }
 }
 
 /**
- * Changes the domain administrator's password.
+ * Modifica la password dell'amministratore di dominio.
  *
  * @param array $params
  * @return string
@@ -372,12 +408,12 @@ function mailcow_ChangePackage(array $params)
 function mailcow_ChangePassword(array $params)
 {
     try {
-        // Use the internal field to find the correct username
+        // Folosește câmpul intern pentru a găsi username-ul corect
         $adminUsername = $params['customfields'][MAILCOW_INTERNAL_USERNAME_FIELD] ?? $params['username'];
         $newPassword = $params['password'];
 
         if (!empty($adminUsername) && !empty($newPassword)) {
-             $data_admin = [
+            $data_admin = [
                 'items' => [$adminUsername],
                 'attr' => [
                     'password' => $newPassword,
@@ -386,19 +422,19 @@ function mailcow_ChangePassword(array $params)
             ];
             mailcow_API_Call($params, 'edit/domain-admin', 'POST', $data_admin);
         } else {
-            throw new Exception("Username or new password missing.");
+            throw new Exception("Username o nuova password mancanti.");
         }
 
-        logModuleCall('mailcow', __FUNCTION__, ['admin' => $adminUsername], 'Success', null, []);
+        logModuleCall('mailcow', __FUNCTION__, ['admin' => $adminUsername], 'Successo', null, []);
         return 'success';
     } catch (Exception $e) {
-        logModuleCall('mailcow', __FUNCTION__, $params, $e->getMessage(), null, []);
+        logModuleCall('mailcow', __FUNCTION__, mailcow_sanitizeParamsForLog($params), $e->getMessage(), null, []);
         return $e->getMessage();
     }
 }
 
 /**
- * Synchronizes the new username from WHMCS with MailCow.
+ * Sincronizza il nuovo username da WHMCS a Mailcow.
  *
  * @param array $params
  * @return string
@@ -410,13 +446,13 @@ function mailcow_SyncUsername(array $params)
         $newUsername = $params['username'];
 
         if (empty($oldUsername)) {
-            throw new Exception("Old (internal) username not found. Unable to sync.");
+            throw new Exception("Username-ul vechi (intern) nu a fost găsit. Imposibil de sincronizat.");
         }
         if (empty($newUsername)) {
-            throw new Exception("New username cannot be empty.");
+            throw new Exception("Noul username nu poate fi gol.");
         }
         if ($oldUsername === $newUsername) {
-            return "Success"; // No action necessary
+            return "Success"; // Nu este necesară nicio acțiune
         }
 
         $data_sync = [
@@ -424,22 +460,22 @@ function mailcow_SyncUsername(array $params)
             'attr' => ['username_new' => $newUsername]
         ];
         mailcow_API_Call($params, 'edit/domain-admin', 'POST', $data_sync);
-        
-        // Update the internal field with the new username
+
+        // Actualizează câmpul intern cu noul username
         mailcow_updateCustomFieldValue($params['serviceid'], MAILCOW_INTERNAL_USERNAME_FIELD, $newUsername);
 
-        logModuleCall('mailcow', __FUNCTION__, ['old' => $oldUsername, 'new' => $newUsername], 'Success', null, []);
+        logModuleCall('mailcow', __FUNCTION__, ['old' => $oldUsername, 'new' => $newUsername], 'Successo', null, []);
         return 'success';
 
     } catch (Exception $e) {
-        logModuleCall('mailcow', __FUNCTION__, $params, $e->getMessage(), null, []);
+        logModuleCall('mailcow', __FUNCTION__, mailcow_sanitizeParamsForLog($params), $e->getMessage(), null, []);
         return $e->getMessage();
     }
 }
 
 
 /**
- * Tests the connection to the server.
+ * Testa la connessione al server.
  *
  * @param array $params
  * @return array
@@ -449,12 +485,13 @@ function mailcow_TestConnection(array $params)
     $success = true;
     $errorMsg = '';
     try {
-        // Use a simple GET endpoint that requires auth
         mailcow_API_Call($params, 'get/status/vmail', 'GET');
     } catch (Exception $e) {
         $success = false;
         $errorMsg = $e->getMessage();
-        logModuleCall('mailcow', __FUNCTION__, $params, $e->getMessage(), null, []);
+        logModuleCall('mailcow', __FUNCTION__, mailcow_sanitizeParamsForLog($params), $e->getMessage(), null, []);
     }
     return ['success' => $success, 'error' => $errorMsg];
 }
+
+
